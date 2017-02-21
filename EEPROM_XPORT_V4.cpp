@@ -32,7 +32,7 @@ struct __attribute__((__packed__)) messageHeader {
 	uint32_t csum;  // Payload checksum
 };
 // Define the message received by peripheral controller 
-struct __attribute__((__packed__)) EEPROM_VARIBLES {
+struct __attribute__((__packed__)) EEPROM_UPDATES {
 	uint8_t sync1;	//1 byte
 	uint8_t sync2;													//1 byte
 	uint8_t sync3;													//1 byte
@@ -44,15 +44,17 @@ struct __attribute__((__packed__)) EEPROM_VARIBLES {
 																	//--------19 bytes
 																	
 	uint8_t action;		 // desired action, read, write, other.		//1 byte
-	uint8_t variable;	 // Variable stored in EEPROM				//1 byte
-	uint16_t value;       // New value of variable if writing		//2 bytes
-	uint8_t spare;													//1 byte
+	uint32_t value1:												//4 byte  // only want 10 variables 20 byte max used
+	uint32_t value2;       // New value of variable if writing		//4 bytes	
+	uint32_t value3;												//4 byte
 	uint8_t spare;													//1 byte
 	uint8_t spare;													//1 byte
 	uint16_t align;      // 4-byte alignment						//2 bytes
 	uint32_t align2;     // 8-byte alignment						//4 bytes
-} message; // Define the message to send							//--------13 bytes 
-																	//-----------------total = 32 bytes = 4 deca-bytes = 256 bits 8 byte allined
+} message; // Define the message to send							//--------21 bytes 
+																	//-----------------total = 40 bytes = 5 Deca-bytes = 320 bits 8 byte aligned
+																	
+//char hldr[] = { sync1, sync2, sync3, spare, messageID, messageSize, hcsum, csum, action, spare, value, spare, spare, align, align2}; 
 
 char testmsg[300];
 
@@ -94,9 +96,9 @@ uint32_t checkSumCompute( uint8_t *buf, int32_t byteCount ) {
 }
 
 // I Assume this will need to be modified in order to decode rather than encode. 
-
+/*
 // Convenience function to finalize the header of a message before sending it
-void checkSumEncode( uint8_t *buf, int32_t byteCount ) {
+void checkSumDEncode( uint8_t *buf, int32_t byteCount ) {
 
 	struct messageHeader *h = (struct messageHeader *)buf;
 
@@ -111,7 +113,18 @@ void checkSumEncode( uint8_t *buf, int32_t byteCount ) {
 	byteCount - sizeof( struct messageHeader ) );
 
 }
-
+*/
+void ReadDemBytes( uint8_t *buf, int32_t byteCount ) {  //for storing serial data storing serial data in a struct 
+	struct messageHeader *h = (struct messageHeader *)buf;
+	uint32_t mcsum = 0;
+	h->hcsum = checkSumCompute(  buf, sizeof( struct messageHeader ) - sizeof( int32_t )*2 );
+	Serial.readBytes(buf, sizeof( struct messageHeader ) - sizeof( int32_t )*2 );
+	mcsum = checkSumCompute( buf, sizeof( struct messageHeader ) - sizeof( int32_t )*2 );
+	if( hcsum == mcsum ){
+		Serial.readBytes(buf, sizeof( byteCount ) );
+	}
+	buf = 0;
+}
 
 char c;
 int action;
@@ -132,13 +145,17 @@ void setup() {
 
 void loop() {
 	
-	//ADD if comms needs to be delayed
-	COMM_CURRENT = millis();
-	if ( (COMM_CURRENT - COMM_START) >= 250 ){   // delays comms without pause for 1 second
-		checkSumEncode( (unsigned char*)&message, sizeof( struct gpiuHealthStatus ) );
-		Serial.read((unsigned char*)&message, sizeof( struct gpiuHealthStatus ) );
-		COMM_START = millis();
+	// if message to update is received 
+	if(){
+		// this is where message is read and check sum is computed 
+		//Serial.read((unsigned char*)&message, sizeof( struct EEPROM_UPDATES ) );      // improper synyax serial dosnt have parameters need to read and store in buffer 1 byte a time 
+		ReadDemBytes( (unsigned char*)&message, sizeof( struct EEPROM_UPDATES ) );
+		//checkSumCompute( (unsigned char*)&message, sizeof( struct EEPROM_UPDATES ) );
+		
+		
 	}
+	
+	
 	
 	
 	ACTN = message.action;
@@ -149,8 +166,9 @@ void loop() {
 						// idk if this functionality is needed 
 	}
 	else if(ACTN == 1){ // Write to EEPROM 
-		EEPROM.update(VARS, VALS);		// need to include something that reads VALS to see if its larger than 1 byte if so it needs to be split into multiiple 
+		EEPROM.update(VARS, VALS);		// need to include something that reads VALS to see if its larger than 1 byte if so it needs to be split into multiple 
 										// EEPROM addresses, max value of 255 (byte) 
+										
 		
 	}
 	else{			// other if code needs to execute only when not reading or writing place here 
