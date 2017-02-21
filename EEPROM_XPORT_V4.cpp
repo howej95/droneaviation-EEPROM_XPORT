@@ -118,12 +118,12 @@ void ReadDemBytes( uint8_t *buf, int32_t byteCount ) {  //for storing serial dat
 	struct messageHeader *h = (struct messageHeader *)buf;
 	uint32_t mcsum = 0;
 	h->hcsum = checkSumCompute(  buf, sizeof( struct messageHeader ) - sizeof( int32_t )*2 );
-	Serial.readBytes(buf, sizeof( struct messageHeader ) - sizeof( int32_t )*2 );
+	Serial.readBytes(buf, sizeof( struct messageHeader ));
 	mcsum = checkSumCompute( buf, sizeof( struct messageHeader ) - sizeof( int32_t )*2 );
-	if( hcsum == mcsum ){
-		Serial.readBytes(buf, sizeof( byteCount ) );
+	if( hcsum != mcsum ){
+		buf = 0;
 	}
-	buf = 0;
+	
 }
 
 char c;
