@@ -1,19 +1,25 @@
 ﻿#include <Arduino.h>
 #include <EEPROM.h>
+#include <string>
+#include <iostream>
+# include < avr / eeprom .h >#include <Winsock2.h> // may need for memcpy
+
 #define MESSAGE_ID_EEPROM_VARIBLES 500
 #define DATALINK_SYNC0 0xa3
 #define DATALINK_SYNC1 0xb2
 #define DATALINK_SYNC2 0xc1
 
-//#include <string>
+typedef unsigned __int128 uint128_t;
+
 
 // Variables
-// A = byte 0 of EEPROM memory
+// A = byte 0 of EEPROM memory 
 // B = byte 2 of EEPROM memory
 // C = byte 4 of EEPROM memory
 // D = byte 6 of EEPROM memory
 // E = byte 8 of EEPROM memory
 // F = byte 10 of EEPROM memory
+
 // G = byte 12 of EEPROM memory
 // H = byte 14 of EEPROM memory
 // I = byte 16 of EEPROM memory
@@ -31,6 +37,13 @@ struct __attribute__((__packed__)) messageHeader {
 	uint32_t hcsum;  // Header checksum
 	uint32_t csum;  // Payload checksum
 };
+
+// Define the header that will be used for processing all incoming messages
+struct messageHeader headerToRead;
+
+// Define an appropriate max buffer size
+uint32_t BUFFERSIZE; // See setup()
+
 // Define the message received by peripheral controller 
 struct __attribute__((__packed__)) EEPROM_UPDATES {
 	uint8_t sync1;	//1 byte
@@ -44,8 +57,8 @@ struct __attribute__((__packed__)) EEPROM_UPDATES {
 																	//--------19 bytes
 																	
 	uint8_t action;		 // desired action, read, write, other.		//1 byte
-	uint32_t value1:												//4 byte  // only want 10 variables 20 byte max used
-	uint32_t value2;       // New value of variable if writing		//4 bytes	
+	uint32_t value1;												//4 byte	//10 variables desired each 2 bytes long so when value 1, 2, & 3 are combined it will give the value and location of the EEPROM update 
+	uint32_t value2;       // New value of variable if writing		//4 byte	// order value3-value2-value1, value3's MSB is MSB of EEPROM
 	uint32_t value3;												//4 byte
 	uint8_t spare;													//1 byte
 	uint8_t spare;													//1 byte
@@ -114,31 +127,85 @@ void checkSumDEncode( uint8_t *buf, int32_t byteCount ) {
 
 }
 */
-void ReadDemBytes( uint8_t *buf, int32_t byteCount ) {  //for storing serial data storing serial data in a struct 
-	struct messageHeader *h = (struct messageHeader *)buf;
-	uint32_t mcsum = 0;
-	h->hcsum = checkSumCompute(  buf, sizeof( struct messageHeader ) - sizeof( int32_t )*2 );
-	Serial.readBytes(buf, sizeof( struct messageHeader ));
-	mcsum = checkSumCompute( buf, sizeof( struct messageHeader ) - sizeof( int32_t )*2 );
-	if( hcsum != mcsum ){
-		buf = 0;
+/**
+ * Inputs:
+ *          buf (uint8_t): the pointer to the incoming message buffer
+ *          byteCount (int32_t): is the number of bytes currently in the message buffer
+ * Outputs:
+ *          int32_t : the number of bytes processed in the message buffer
+ */
+
+int32_t ReadDemBytes( uint8_t *buf, int32_t byteCount ) {  //for storing serial data storing serial data in a struct
+	int32_t bufferIndex = 0; // The current read index in the received buffer
+	uint8_t done = 0;  // When the loop is finished
+	uint8_t *bf; // The buffer indexed at bufferIndex
+
+	// Step through each byte in the buffer until there is not enough to read a message header or the processing is complete
+	while( ( bufferIndex <= byteCount - (int32_t)sizeof( struct messageHeader ) ) && !done ) {
+
+		// Look for the sync bytes.  This signals the start of a message
+		if( ( buf[bufferIndex]   == DATALINK_SYNC0 ) &&
+		( buf[bufferIndex + 1] == DATALINK_SYNC1 ) &&
+		( buf[bufferIndex + 2] == DATALINK_SYNC2 ) ) {
+
+			// Assign the indexed buffer for easier processing
+			bf = &(buf[bufferIndex]);
+
+			// Copy into the reading header for easy access to all fields
+			memcpy( &headerToRead, bf, sizeof( struct messageHeader ) );
+
+			if( checkSumCompute( bf, sizeof( struct messageHeader ) - sizeof( int32_t )*2 ) == headerToRead.hcsum && // Verify the header checksum
+			headerToRead.messageSize >= sizeof( struct messageHeader ) && // Verify that the message size (which includes the header) is at least large enough
+			headerToRead.messageSize < BUFFERSIZE ) { // Verify that we aren't waiting for something insanely large
+
+				if( headerToRead.messageSize + bufferIndex <= byteCount ) { // The entire message has been read
+
+					// Verify the message checksum
+					if( datalinkCheckSumCompute( &bf[sizeof( struct messageHeader )], headerToRead.messageSize - sizeof( struct messageHeader ) ) == headerToRead.csum ) { // is datalinkCheckSumCompute a separate function than checkSomeCompute
+
+						// Switch based on the message ID
+						switch( headerToRead.messageID ) {
+							// The message you defined
+							case MESSAGE_ID_EEPROM_VARIBLES:
+							// Final check - is the message size correct?  If not, then there's an encoding issue from the other side, or the message definitions on both sides don't match
+							if( headerToRead.messageSize == sizeof( struct EEPROM_UPDATES ) ) {
+								// Copy the message to the internal message structure
+								memcpy( &message, bf, sizeof( struct EEPROM_UPDATES ) ); 
+								// TODO: Handle the data that is not stored in message
+							}
+							break;
+							default:
+							// Bad message ID.  Log error?
+						}
+						} else{
+						// Bad checksum.  Log error?
+					}
+					// Finished processing this message - index past it in the buffer
+					bufferIndex += headerToRead.messageSize - 1;
+					} else {
+					// The full message has not been read yet.
+					done = 1; // Break the while loop to read after more data is acquired
+				}
+				} else {
+				// Header checksum is bad.  Log error?
+				bufferIndex += sizeof( struct messageHeader ) - 1;  // Read past the message header, then start looking for sync bytes again
+			}
+			} else {
+			// Sync bytes not found - look at next byte
+			bufferIndex++;
+		}
 	}
-	
 }
 
-char c;
-int action;
-int variable;
-int value;
-int VARS;  //holds the value of the variable to read or write too
-long VALS; //holds the value to write to the variable 
-int ACTN;  // holds the value that represents the desired action 
+
 unsigned long COMM_START = 0;      // The time that the last status message was sent
 unsigned long COMM_CURRENT = 0;    // The current time of the system
 
 void setup() {
 	// put your setup code here, to run once:
 	message.messageID = MESSAGE_ID_EEPROM_VARIBLES;
+	BUFFERSIZE = 1024*100; // Define the appropriate max buffer size, may be an issue default buffer size for atmega328p is 64 bytes or 512 bits
+	
 	Serial1.begin(9600);
 
 }
@@ -147,33 +214,39 @@ void loop() {
 	
 	// if message to update is received 
 	if(){
-		// this is where message is read and check sum is computed 
-		//Serial.read((unsigned char*)&message, sizeof( struct EEPROM_UPDATES ) );      // improper synyax serial dosnt have parameters need to read and store in buffer 1 byte a time 
-		ReadDemBytes( (unsigned char*)&message, sizeof( struct EEPROM_UPDATES ) );
-		//checkSumCompute( (unsigned char*)&message, sizeof( struct EEPROM_UPDATES ) );
-		
-		
+		// this is where message is read 
+		ReadDemBytes( (unsigned char*)&message, sizeof( struct EEPROM_UPDATES ) ); // calls read function to get message decode and compute checksum 	
 	}
 	
+	uint8_t ACTN = message.action;
 	
 	
-	
-	ACTN = message.action;
-	VARS = message.variable; 
-	VALS = message.value;
-	
-	if(ACTN == 0){ //read from EEPROM
-						// idk if this functionality is needed 
-	}
-	else if(ACTN == 1){ // Write to EEPROM 
-		EEPROM.update(VARS, VALS);		// need to include something that reads VALS to see if its larger than 1 byte if so it needs to be split into multiple 
-										// EEPROM addresses, max value of 255 (byte) 
-										
+	if(ACTN == 1){ // Write to EEPROM
+		uint32_t MSB = message.value3;
+		uint32_t MID = message.value2;
+		uint32_t LSB = message.value1;
+		uint8_t VALS[12]; // use if we need uint8_t numbers in an array instead of one uint128_t number
+		
+		//uint128_t VALS = ((MSB << 64) | (MID << 32)) | LSB;
+		//uint8_t msb[4];
+		//uint8_t mid[4];
+		//uint8_t lsb[4];
+		
+		//memcpy(msb, &MSB, sizeof(MSB));
+		//memcpy(mid, &MID, sizeof(MID));
+		//memcpy(lsb, &LSB, sizeof(LSB));
+		
+		memcpy(VALS, &MSB, sizeof(MSB));
+		memcpy(VALS+sizeof(MSB),&MID,sizeof(MID));
+		memcpy(VALS+sizeof(MSB)+sizeof(MID),&LSB,sizeof(LSB));
+		
+		VALS =  // this is where value1,2,&3  are stored in array 
+		
+		eeprom_update_block( const void * VALS, void * 0, 96);  //eeprom_update_block( const void * __src, void * __dst, #bytes)
 		
 	}
 	else{			// other if code needs to execute only when not reading or writing place here 
 		
 	}
 	
-	checkSumEncode( (unsigned char*)&message, sizeof( struct monitoringboardstatus) );
 }
