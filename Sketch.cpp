@@ -1,11 +1,12 @@
 ﻿#include <Arduino.h>
+//#include <avr.h>
 //#include <EEPROM.h>
 //#include <string>
 //#include <iostream>
-//#include < avr / eeprom .h >
+#include <avr/eeprom.h>
 //#include <Winsock2.h> // may need for memcpy
 
-#define MESSAGE_ID_EEPROM_VARIBLES 500
+#define MESSAGE_ID_EEPROM_VARIBLES 1000 //500
 #define DATALINK_SYNC0 0xa3
 #define DATALINK_SYNC1 0xb2
 #define DATALINK_SYNC2 0xc1
@@ -64,7 +65,7 @@ struct __attribute__((__packed__)) EEPROM_UPDATES {
 	uint8_t spare1;                         //1 byte
 	uint16_t align;      // 4-byte alignment            //2 bytes
 	uint32_t align2;     // 8-byte alignment            //4 bytes
-} message; // Define the message to send              //--------21 bytes
+} message; // Define the message to send              //--------20 bytes
 //-----------------total = 40 bytes = 5 Deca-bytes = 320 bits 8 byte aligned
 
 //char hldr[] = { sync1, sync2, sync3, spare, messageID, messageSize, hcsum, csum, action, spare, value, spare, spare, align, align2};
@@ -137,6 +138,7 @@ int32_t readBytes( uint8_t *buf, int32_t byteCount ) {  //for storing serial dat
 
 	// Step through each byte in the buffer until there is not enough to read a message header or the processing is complete
 	while( ( bufferIndex <= byteCount - (int32_t)sizeof( struct messageHeader ) ) && !done ) {
+		//Serial.println("in while loop");
 
 		// Look for the sync bytes.  This signals the start of a message
 		if( ( buf[bufferIndex]   == DATALINK_SYNC0 ) &&
@@ -166,6 +168,7 @@ int32_t readBytes( uint8_t *buf, int32_t byteCount ) {  //for storing serial dat
 									if( headerToRead.messageSize == sizeof( struct EEPROM_UPDATES ) ) {
 										// Copy the message to the internal message structure
 										memcpy( &message, bf, sizeof( struct EEPROM_UPDATES ) );
+										//Serial.println("MESSAGE SAVED");
 									}
 									break;
 								default:
@@ -179,9 +182,11 @@ int32_t readBytes( uint8_t *buf, int32_t byteCount ) {  //for storing serial dat
 							}
 							// Finished processing this message - index past it in the buffer
 							bufferIndex += headerToRead.messageSize - 1;
+							//Serial.println("buffer indexed");
 						} else {
 							// The full message has not been read yet.
 							done = 1; // Break the while loop to read after more data is acquired
+							//Serial.println("full message has not been read yet");
 						}
 				} else {
 					// Header checksum is bad.  Log error?
@@ -191,12 +196,21 @@ int32_t readBytes( uint8_t *buf, int32_t byteCount ) {  //for storing serial dat
 		} else {
 			// Sync bytes not found - look at next byte
 			bufferIndex++;
+			//Serial.println("No Sync");
 		}
 	}
 	// How much data to clear from the buffer
 	return bufferIndex;
 }
 
+uint16_t COMBO( uint8_t X_High, uint8_t X_Low )
+{
+	// Combine two uint8_t bytes, with multiplication, into one uint16_t unsigned integer
+	uint16_t Combo;
+	Combo = X_High*256;
+	Combo |= X_Low;
+	return Combo;
+}
 
 unsigned long COMM_START = 0;      // The time that the last status message was sent
 unsigned long COMM_CURRENT = 0;    // The current time of the system
@@ -205,7 +219,7 @@ int32_t bytesInBuff;
 
 void setup() {
 	// put your setup code here, to run once:
-	message.messageID = MESSAGE_ID_EEPROM_VARIBLES;
+	message.messageID = MESSAGE_ID_EEPROM_VARIBLES; //MESSAGE_ID_EEPROM_VARIBLES;
 	BUFFERSIZE = 64; // Define the appropriate max buffer size, may be an issue default buffer size for atmega328p is 64 bytes or 512 bits
 	bytesInBuff = 0;
 	Serial.begin(9600);
@@ -240,56 +254,114 @@ void loop() {
 	}
 
 	// Do whatever you want with the decoded message now
-	uint8_t ACTN = message.action;
-	Serial.println(ACTN);
-	Serial.println("message read");
-	//if(ACTN == 1){ // Write to EEPROM
-	uint32_t MSB = message.value3;
-	Serial.println(MSB);
-	uint32_t MID = message.value2;
-	Serial.println(MID);
-	uint32_t LSB = message.value1;
-	Serial.println(LSB);
-	/*if (MSB = 0xffff){
-	int a = 1;
-	Serial.write(a);
-	}
-	if (MSB = 0xaaaa){
-	int b = 1;
-	Serial.write(b);
-	}
-	if (MSB = 0x1212){
-	int c = 1;
-	Serial.write(c);
-	}
-	*/
-	uint8_t VALS[12]; // use if we need uint8_t numbers in an array instead of one uint128_t number
+	int ACTN = message.action; //uint8_t
+	if(ACTN == 1){
+		Serial.println("Updating EEPROM");
+		//Serial.println(ACTN);
+		//Serial.println("message read");
+		//if(ACTN == 1){ // Write to EEPROM
+		uint32_t MSB = message.value3;
+		Serial.print("Value 3: ");
+		Serial.println(MSB);
+		uint32_t MID = message.value2;
+		Serial.print("Value 2: ");
+		Serial.println(MID);
+		uint32_t LSB = message.value1;
+		Serial.print("Value 1: ");
+		Serial.println(LSB);
+		delay(1000);
+		/*if (MSB = 0xffff){
+		int a = 1;
+		Serial.write(a);
+		}
+		if (MSB = 0xaaaa){
+		int b = 1;
+		Serial.write(b);
+		}
+		if (MSB = 0x1212){
+		int c = 1;
+		Serial.write(c);
+		}
+		*/
+		uint8_t VALS[12];//uint8_t VALS[12]; // use if we need uint8_t numbers in an array instead of one uint128_t number
 
-	//uint128_t VALS = ((MSB << 64) | (MID << 32)) | LSB;
-	//uint8_t msb[4];
-	//uint8_t mid[4];
-	//uint8_t lsb[4];
+		//uint128_t VALS = ((MSB << 64) | (MID << 32)) | LSB;
+		//uint8_t msb[4];
+		//uint8_t mid[4];
+		//uint8_t lsb[4];
 
-	//memcpy(msb, &MSB, sizeof(MSB));
-	//memcpy(mid, &MID, sizeof(MID));
-	//memcpy(lsb, &LSB, sizeof(LSB));
-	//Serial1.println(MSB);
-	//Serial1.println(MID);
-	//Serial1.println(LSB);
-	memcpy(VALS, &MSB, sizeof(MSB));
-	memcpy(VALS+sizeof(MSB),&MID,sizeof(MID));
-	memcpy(VALS+sizeof(MSB)+sizeof(MID),&LSB,sizeof(LSB));
+		//memcpy(msb, &MSB, sizeof(MSB));
+		//memcpy(mid, &MID, sizeof(MID));
+		//memcpy(lsb, &LSB, sizeof(LSB));
+		//Serial1.println(MSB);
+		//Serial1.println(MID);
+		//Serial1.println(LSB);
+		
+		memcpy(VALS, &MSB, sizeof(MSB));						 
+		memcpy(VALS+sizeof(MSB),&MID,sizeof(MID));
+		memcpy(VALS+sizeof(MSB)+sizeof(MID),&LSB,sizeof(LSB));
 
-	//VALS =  // this is where value1,2,&3  are stored in array
-
-	//eeprom_update_block( const void * VALS, void * 0, 96);  //eeprom_update_block( const void * __src, void * __dst, #bytes) //may be byte by byte so if one byte wears out the ones around it are unaffected
-	for (int i=0; i<sizeof(VALS) ;++i){
-		//printf("0x%02X\n",VALS[i]);
-		Serial.print(VALS[i]);
-		//Serial1.println(1);
-		//printf(VALS[i]); //"%u",
-
-	}
+		//VALS =  // this is where value1,2,&3  are stored in array
+		Serial.println("");
+		Serial.println("what saves to EEPROM");
+		eeprom_update_block( VALS, 0, 12);  //eeprom_update_block( const void * __src, void * __dst, #bytes) //may be byte by byte so if one byte wears out the ones around it are unaffected
+		for (int i=0; i<sizeof(VALS) ;++i){
+			//printf("0x%02X\n",VALS[i]);
+			Serial.print(VALS[i]);			//issues the value3 is saved completely in vals 0&1 then B is zero check into this. 
+			//Serial1.println(1);
+			//printf(VALS[i]); //"%u",
+		}
+		
+		
+		Serial.println("");
+		uint8_t variable = 10;
+		for (int i=0; i<sizeof(VALS) ;++i){
+			Serial.println(variable,HEX);
+			Serial.print("Byte 1: ");
+			Serial.println(VALS[i]);
+			++i;
+			Serial.print("Byte 2: ");
+			Serial.println(VALS[i]);
+			variable++;	
+		}
+		/*
+		Serial.println("");
+		Serial.println("Read from EEPROM");
+		uint16_t A = COMBO(VALS[0],VALS[1]); //Replace VALS[x] with EEPROM.read(address),EEPROM.read(address+1), plan is A = Address 0 & 1
+		Serial.print("Variable A: ");
+		Serial.println( A );
+		uint16_t B = COMBO(VALS[2],VALS[3]);
+		Serial.print("Variable B: ");
+		Serial.println( B );
+		uint16_t C = COMBO(VALS[4],VALS[5]);
+		Serial.print("Variable C: ");
+		Serial.println( C );
+		uint16_t D = COMBO(VALS[6],VALS[7]);
+		Serial.print("Variable D: ");
+		Serial.println( D );
+		uint16_t E = COMBO(VALS[8],VALS[9]);
+		Serial.print("Variable E: ");
+		Serial.println( E );
+		uint16_t F = COMBO(VALS[10],VALS[11]);
+		Serial.print("Variable F: ");
+		Serial.println( F );
+		*/
+		Serial.println("");
+		Serial.println("Read from EEPROM");
+		uint8_t c = 10;
+		for(uint16_t p=0; p<sizeof(VALS) ;++p){
+			uint16_t EEPROM_VALUE = eeprom_read_word( (uint16_t*)p ); //eeprom_read_word( const uint16_t *p);
+			Serial.println(c,HEX);
+			Serial.println( EEPROM_VALUE );
+			p++;
+			c++;
+		}
+		
+		Serial.println("");
+		Serial.println("HIT RESET!");
+		delay(100000000);
+	} 
 	//}
 	//else{     // other if code needs to execute only when not reading or writing place here
 }
+
