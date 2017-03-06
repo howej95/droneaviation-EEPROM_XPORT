@@ -95,20 +95,6 @@ uint32_t checkSumCompute( uint8_t *buf, int32_t byteCount ) {
 	return( sum2 << 16UL | sum1 );
 }
 
-// Convenience function to finalize the header of a message before sending it
-void checkSumEncode( uint8_t *buf, int32_t byteCount ) {
-	struct messageHeader *h = (struct messageHeader *)buf;
-
-	h->sync1 = DATALINK_SYNC0;
-	h->sync2 = DATALINK_SYNC1;
-	h->sync3 = DATALINK_SYNC2;
-
-	h->messageSize = byteCount;
-
-	h->hcsum = checkSumCompute(  buf, sizeof( struct messageHeader ) - sizeof( int32_t )*2 );
-	h->csum  = checkSumCompute( &(buf[sizeof( struct messageHeader )]),
-		byteCount - sizeof( struct messageHeader ) );
-}
 
 /**
 * Inputs:
@@ -239,15 +225,15 @@ void loop() {
 		Serial.println(LSB);
 		delay(1000);
 	
-		uint8_t VALS[12];
+		uint8_t VALS[12] = {0,0,0,0,0,0,0,0,0,0,0,0};
 
-		memcpy(VALS, &MSB, sizeof(MSB));						 
-		memcpy(VALS+sizeof(MSB),&MID,sizeof(MID));
-		memcpy(VALS+sizeof(MSB)+sizeof(MID),&LSB,sizeof(LSB));
+		memcpy(&VALS[0], &MSB, sizeof(MSB));						 
+		memcpy(&VALS[sizeof(MSB)],&MID,sizeof(MID));
+		memcpy(&VALS[sizeof(MSB)+sizeof(MID)],&LSB,sizeof(LSB));
 
 		Serial.println("");
 		Serial.println("what saves to EEPROM");
-		eeprom_update_block( VALS, 0, 11);  //eeprom_update_block( const void * __src, void * __dst, #bytes) //string of bytes is u[pdated to 
+		eeprom_update_block( VALS, 0, 12);  //eeprom_update_block( const void * __src, void * __dst, #bytes) //string of bytes is u[pdated to 
 		for (int i=0; i<sizeof(VALS) ;++i){
 			Serial.print(VALS[i]);			
 		}
@@ -269,9 +255,9 @@ void loop() {
 		Serial.println( " times" );
 		for(uint8_t d=0; d<A; d++){
 			digitalWrite(LED_PIN, HIGH);   
-			delay(1000);                  
+			delay(500);                  
 			digitalWrite(LED_PIN, LOW);    
-			delay(1000);                  
+			delay(500);                  
 		}
 		Serial.println("");
 		Serial.println("HIT RESET!"); // to prevent code from looping and updating EEPROM more than one time
