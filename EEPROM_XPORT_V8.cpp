@@ -94,6 +94,22 @@ uint32_t checkSumCompute( uint8_t *buf, int32_t byteCount ) {
   return( sum2 << 16UL | sum1 );
 }
 
+// Convenience function to finalize the header of a message before sending it
+void checkSumEncode( uint8_t *buf, int32_t byteCount ) {
+
+	struct messageHeader *h = (struct messageHeader *)buf;
+
+	h->sync1 = DATALINK_SYNC0;
+	h->sync2 = DATALINK_SYNC1;
+	h->sync3 = DATALINK_SYNC2;
+
+	h->messageSize = byteCount;
+
+	h->hcsum = checkSumCompute(  buf, sizeof( struct messageHeader ) - sizeof( int32_t )*2 );
+	h->csum  = checkSumCompute( &(buf[sizeof( struct messageHeader )]),
+	byteCount - sizeof( struct messageHeader ) );
+
+}
 
 /**
 * Inputs:
@@ -139,17 +155,19 @@ int32_t readBytes( uint8_t *buf, int32_t byteCount ) {  //for storing serial dat
               if( headerToRead.messageSize == sizeof( struct EEPROM_UPDATES ) ) {
                 // Copy the message to the internal message structure
                 memcpy( &message, bf, sizeof( struct EEPROM_UPDATES ) );
-                
+                message.errorCode = 0;
               }
               break;
               default:
               // Bad message ID.  Log error?
               Serial.println("Unknown message ID - throw message away");
+			  message.errorCode = 2;
               break;
             }
             } else{
             // Bad checksum.  Log error?
             Serial.println("Bad checksum - message thrown away");
+			message.errorCode = 2;
           }
           // Finished processing this message - index past it in the buffer
           bufferIndex += headerToRead.messageSize - 1;
@@ -161,6 +179,7 @@ int32_t readBytes( uint8_t *buf, int32_t byteCount ) {  //for storing serial dat
         } else {
         // Header checksum is bad.  Log error?
         Serial.println("Bad header checksum - header thrown away");
+		message.errorCode = 2;
         bufferIndex += sizeof( struct messageHeader ) - 1;  // Read past the message header, then start looking for sync bytes again
       }
       } else {
@@ -212,6 +231,7 @@ void loop() {
   // Do whatever you want with the decoded message now
   int ACTN = message.action; //uint8_t
   if(ACTN == 1){
+	  message.action = 3; // Write response is assigned to action for the follow up message to GCS 
 	  /*
     Serial.println("Updating EEPROM");
     uint32_t MSB = message.value3;
@@ -269,8 +289,20 @@ void loop() {
       delay(500);
     }
 	*/
+	/* If we want to clear message before response 
+	message.data[0] = 0;
+	message.data[1] = 0;
+	message.data[2] = 0;
+	message.data[3] = 0;
+	message.data[4] = 0;
+	*/
+	
+	checkSumEncode( (unsigned char*)&message, sizeof( struct EEPROM_UPDATES ) );
+	Serial.write((unsigned char*)&message, sizeof( struct EEPROM_UPDATES ) );
+	
     Serial.println("");
     Serial.println("HIT RESET!"); // to prevent code from looping and updating EEPROM more than one time
     delay(100000000);
   }
+
 }
