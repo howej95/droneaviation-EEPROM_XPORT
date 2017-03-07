@@ -30,12 +30,12 @@ def main():
 
     # Set all values
     eeprom_updates_message.mapped["action"].values = 1
-    eeprom_updates_message.mapped["value1"].values = 65535 #int(input("Please input value1, in hex w/o 0x prefix: "), 32))
-    print(eeprom_updates_message.mapped["value1"].values)
-    eeprom_updates_message.mapped["value2"].values = 43690#int(input("Please input value2, in hex w/o 0x prefix: "), 32)
-    print(eeprom_updates_message.mapped["value2"].values)
-    eeprom_updates_message.mapped["value3"].values = 4626#int(input("Please input value3, in hex w/o 0x prefix: "), 32)
-    print(eeprom_updates_message.mapped["value3"].values)
+    eeprom_updates_message.mapped["value1"].values = 4294967295#=0xffffffff, 0xffff=65535 #int(input("Please input value1, in hex w/o 0x prefix: "), 32))
+    print(eeprom_updates_message.mapped["value1"].values)   #value1 is the LSBs, 65535 is the highest value possible 0xffff
+    eeprom_updates_message.mapped["value2"].values = 4294967295#= 0xaaaaaaaa, 0xaaaa=43690#int(input("Please input value2, in hex w/o 0x prefix: "), 32)
+    print(eeprom_updates_message.mapped["value2"].values)   #value2 is the MIDs
+    eeprom_updates_message.mapped["value3"].values = 10#303174162 #= 0x12121212, 0x1212=4626#int(input("Please input value3, in hex w/o 0x prefix: "), 32)
+    print(eeprom_updates_message.mapped["value3"].values)   #value3 is the MSBs
 
     # Encode and send
     encoded_message = eeprom_updates_message.encode()
@@ -48,10 +48,10 @@ def main():
   
     #while (i >= 12): # >= 12 # 12 is the number of bytes sub with expected number of bytes
     sleep(2)
-    r = ser.read(100)
+    #r = ser.read(100)
    
 
-    print (r)
+    #print (r)
 
     ser.close()
 
